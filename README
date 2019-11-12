@@ -1,0 +1,5 @@
+Puts all of the MPSoC Linux drivers in one place. 
+
+All of my Makefiles reference the directory on my computer where I cloned the 
+linux-xlnx repo. You will need to change /home/mahkoe/research/stale/linux-xlnx 
+to whatever it is on your computer.

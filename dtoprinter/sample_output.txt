@@ -1,0 +1,360 @@
+[  504.259778] DTO printer inserted!
+[  514.423584] changing PL CLK0's frequency to 100
+[  514.423657] enabling PL CLK0
+[  514.426327] disabling PL CLK1
+[  514.426472] disabling PL CLK2
+[  514.426607] disabling PL CLK3
+[  525.704066] Received a device tree update:
+[  525.708106] 	REMOVE PROPERTY
+[  525.710968] 		axidma_chrdev = 0x2f2f617869646d615f636872646576403000
+[  525.717294] 	OF
+[  525.719027] 		.name = __symbols__
+[  525.722326] 		.full_name = /__symbols__
+[  525.726147] Received a device tree update:
+[  525.730225] 	REMOVE PROPERTY
+[  525.733087] 		axi_dma_0 = 0x2f616d62612f646d6140613030333030303000
+[  525.739253] 	OF
+[  525.740979] 		.name = __symbols__
+[  525.744286] 		.full_name = /__symbols__
+[  525.748213] Received a device tree update:
+[  525.752231] 	DETACH NODE
+[  525.754746] 		.name = axidma_chrdev
+[  525.758218] 		.full_name = //axidma_chrdev@0
+[  525.762474] Received a device tree update:
+[  525.766553] 	DETACH NODE
+[  525.769060] 		.name = dma-channel
+[  525.772367] 		.full_name = /amba/dma@a0030000/dma-channel@a0030030
+[  525.778533] Received a device tree update:
+[  525.782609] 	DETACH NODE
+[  525.785118] 		.name = dma-channel
+[  525.788425] 		.full_name = /amba/dma@a0030000/dma-channel@a0030000
+[  525.794804] Received a device tree update:
+[  525.798818] 	DETACH NODE
+[  525.801324] 		.name = dma
+[  525.803936] 		.full_name = /amba/dma@a0030000
+[  525.808278] Received a device tree update:
+[  525.812356] 	UPDATE PROPERTY
+[  525.815224] 		compatible = 0x786c6e782c66636c6b00
+[  525.819908] 	OF
+[  525.821635] 		.name = fclk0
+[  525.824421] 		.full_name = /fclk0
+[  525.827719] 	WHICH USED TO BE
+[  525.830674] 		compatible = 0x66697865642d636c6f636b00
+[  525.835707] Received a device tree update:
+[  525.839785] 	REMOVE PROPERTY
+[  525.842651] 		clock-frequency = 0x06cfd819
+[  525.846728] 	OF
+[  525.848456] 		.name = fclk0
+[  525.851242] 		.full_name = /fclk0
+[  525.854541] Received a device tree update:
+[  525.858620] 	REMOVE PROPERTY
+[  525.861479] 		#clock-cells = 0x00000000
+[  525.865304] 	OF
+[  525.867039] 		.name = fclk0
+[  525.869809] 		.full_name = /fclk0
+[  525.873313] Received a device tree update:
+[  525.877350] 	UPDATE PROPERTY
+[  525.880195] 		status = 0x64697361626c656400
+[  525.884357] 	OF
+[  525.886092] 		.name = fclk0
+[  525.888862] 		.full_name = /fclk0
+[  525.892169] 	WHICH USED TO BE
+[  525.895122] 		status = 0x6f6b617900
+[  525.898594] Received a device tree update:
+[  525.902672] 	REMOVE PROPERTY
+[  525.905531] 		resets = 0x0000001a00000074
+[  525.909529] 	OF
+[  525.911264] 		.name = fpga-full
+[  525.914390] 		.full_name = /fpga-full
+[  525.918036] Received a device tree update:
+[  525.922115] 	REMOVE PROPERTY
+[  525.924977] 		firmware-name = 0x70617373746872755f313030472e62696e00
+[  525.931317] 	OF
+[  525.933044] 		.name = fpga-full
+[  525.936177] 		.full_name = /fpga-full
+[  525.939824] Received a device tree update:
+[  525.943902] 	UPDATE PROPERTY
+[  525.946768] 		#size-cells = 0x00000002
+[  525.950499] 	OF
+[  525.952227] 		.name = fpga-full
+[  525.955359] 		.full_name = /fpga-full
+[  525.959005] 	WHICH USED TO BE
+[  525.961958] 		#size-cells = 0x00000002
+[  525.965682] Received a device tree update:
+[  525.969769] 	UPDATE PROPERTY
+[  525.972634] 		#address-cells = 0x00000002
+[  525.976629] 	OF
+[  525.978362] 		.name = fpga-full
+[  525.981479] 		.full_name = /fpga-full
+[  525.985133] 	WHICH USED TO BE
+[  525.988086] 		#address-cells = 0x00000002
+[  525.995789] fpga_manager fpga0: writing passthru_100G.bin to Xilinx ZynqMP FPGA Manager
+[  526.233664] Received a device tree update:
+[  526.237698] 	UPDATE PROPERTY
+[  526.240561] 		#address-cells = 0x00000002
+[  526.244547] 	OF
+[  526.246282] 		.name = fpga-full
+[  526.249399] 		.full_name = /fpga-full
+[  526.253052] 	WHICH USED TO BE
+[  526.256005] 		#address-cells = 0x00000002
+[  526.259998] Received a device tree update:
+[  526.264076] 	UPDATE PROPERTY
+[  526.266942] 		#size-cells = 0x00000002
+[  526.270673] 	OF
+[  526.272400] 		.name = fpga-full
+[  526.275534] 		.full_name = /fpga-full
+[  526.279179] 	WHICH USED TO BE
+[  526.282132] 		#size-cells = 0x00000002
+[  526.285856] Received a device tree update:
+[  526.289943] 	ADD PROPERTY
+[  526.292544] 		firmware-name = 0x70617373746872755f313030472e62696e00
+[  526.298884] 	OF
+[  526.300610] 		.name = fpga-full
+[  526.303744] 		.full_name = /fpga-full
+[  526.307390] Received a device tree update:
+[  526.311469] 	ADD PROPERTY
+[  526.314076] 		resets = 0x0000001a00000074
+[  526.318066] 	OF
+[  526.319793] 		.name = fpga-full
+[  526.322927] 		.full_name = /fpga-full
+[  526.327021] Received a device tree update:
+[  526.331039] 	UPDATE PROPERTY
+[  526.333901] 		status = 0x6f6b617900
+[  526.337363] 	OF
+[  526.339106] 		.name = fclk0
+[  526.341876] 		.full_name = /fclk0
+[  526.345183] 	WHICH USED TO BE
+[  526.348137] 		status = 0x64697361626c656400
+[  526.352302] Received a device tree update:
+[  526.356380] 	ADD PROPERTY
+[  526.358986] 		#clock-cells = 0x00000000
+[  526.362803] 	OF
+[  526.364531] 		.name = fclk0
+[  526.367317] 		.full_name = /fclk0
+[  526.370616] Received a device tree update:
+[  526.374695] 	ADD PROPERTY
+[  526.377293] 		clock-frequency = 0x06cfd819
+[  526.381379] 	OF
+[  526.383114] 		.name = fclk0
+[  526.385892] 		.full_name = /fclk0
+[  526.389183] Received a device tree update:
+[  526.393270] 	UPDATE PROPERTY
+[  526.396138] 		compatible = 0x66697865642d636c6f636b00
+[  526.401170] 	OF
+[  526.402904] 		.name = fclk0
+[  526.405675] 		.full_name = /fclk0
+[  526.408981] 	WHICH USED TO BE
+[  526.411936] 		compatible = 0x786c6e782c66636c6b00
+[  526.417024] xilinx-vdma a0030000.dma: Xilinx AXI DMA Engine Driver Probed!!
+[  526.417044] Received a device tree update:
+[  526.421060] 	ATTACH NODE
+[  526.423574] 		.name = dma
+[  526.426177] 		.full_name = /amba/dma@a0030000
+[  526.430518] Received a device tree update:
+[  526.434596] 	UPDATE PROPERTY
+[  526.437455] 		#dma-cells = 0x00000001
+[  526.441106] 	OF
+[  526.442841] 		.name = dma
+[  526.445438] 		.full_name = /amba/dma@a0030000
+[  526.449786] 	WHICH USED TO BE
+[  526.452739] 		#dma-cells = 0x00000001
+[  526.456384] Received a device tree update:
+[  526.460463] 	UPDATE PROPERTY
+[  526.463344] 		clock-names = 0x735f6178695f6c6974655f61636c6b006d5f6178695f73675f61636c6b006d5f6178695f6d6d32735f61636c6b006d5f6178695f73326d6d5f61636c6b00
+[  526.477135] 	OF
+[  526.478868] 		.name = dma
+[  526.481461] 		.full_name = /amba/dma@a0030000
+[  526.485809] 	WHICH USED TO BE
+[  526.488777] 		clock-names = 0x735f6178695f6c6974655f61636c6b006d5f6178695f73675f61636c6b006d5f6178695f6d6d32735f61636c6b006d5f6178695f73326d6d5f61636c6b00
+[  526.502568] Received a device tree update:
+[  526.506641] 	UPDATE PROPERTY
+[  526.509502] 		clocks = 0x0000007b0000007b0000007b0000007b
+[  526.514888] 	OF
+[  526.516614] 		.name = dma
+[  526.519227] 		.full_name = /amba/dma@a0030000
+[  526.523567] 	WHICH USED TO BE
+[  526.526523] 		clocks = 0x0000007b0000007b0000007b0000007b
+[  526.531902] Received a device tree update:
+[  526.535980] 	UPDATE PROPERTY
+[  526.538849] 		compatible = 0x786c6e782c6178692d646d612d312e30302e6100
+[  526.545269] 	OF
+[  526.547003] 		.name = dma
+[  526.549599] 		.full_name = /amba/dma@a0030000
+[  526.553947] 	WHICH USED TO BE
+[  526.556897] 		compatible = 0x786c6e782c6178692d646d612d312e30302e6100
+[  526.563324] Received a device tree update:
+[  526.567401] 	UPDATE PROPERTY
+[  526.570273] 		interrupt-names = 0x6d6d32735f696e74726f75740073326d6d5f696e74726f757400
+[  526.578168] 	OF
+[  526.579892] 		.name = dma
+[  526.582505] 		.full_name = /amba/dma@a0030000
+[  526.586845] 	WHICH USED TO BE
+[  526.589796] 		interrupt-names = 0x6d6d32735f696e74726f75740073326d6d5f696e74726f757400
+[  526.597699] Received a device tree update:
+[  526.601775] 	UPDATE PROPERTY
+[  526.604641] 		interrupt-parent = 0x00000004
+[  526.608806] 	OF
+[  526.610541] 		.name = dma
+[  526.613137] 		.full_name = /amba/dma@a0030000
+[  526.617486] 	WHICH USED TO BE
+[  526.620439] 		interrupt-parent = 0x00000004
+[  526.624604] Received a device tree update:
+[  526.628683] 	UPDATE PROPERTY
+[  526.631554] 		interrupts = 0x000000000000005900000004000000000000005a00000004
+[  526.638667] 	OF
+[  526.640392] 		.name = dma
+[  526.643005] 		.full_name = /amba/dma@a0030000
+[  526.647345] 	WHICH USED TO BE
+[  526.650303] 		interrupts = 0x000000000000005900000004000000000000005a00000004
+[  526.657417] Received a device tree update:
+[  526.661494] 	UPDATE PROPERTY
+[  526.664363] 		reg = 0x00000000a00300000000000000010000
+[  526.669480] 	OF
+[  526.671215] 		.name = dma
+[  526.673811] 		.full_name = /amba/dma@a0030000
+[  526.678160] 	WHICH USED TO BE
+[  526.681107] 		reg = 0x00000000a00300000000000000010000
+[  526.686233] Received a device tree update:
+[  526.690312] 	UPDATE PROPERTY
+[  526.693170] 		xlnx,addrwidth = 0x00000040
+[  526.697169] 	OF
+[  526.698904] 		.name = dma
+[  526.701501] 		.full_name = /amba/dma@a0030000
+[  526.705849] 	WHICH USED TO BE
+[  526.708802] 		xlnx,addrwidth = 0x00000040
+[  526.712794] Received a device tree update:
+[  526.716873] 	UPDATE PROPERTY
+[  526.719737] 		xlnx,include-sg = 0x((empty))
+[  526.723904] 	OF
+[  526.725631] 		.name = dma
+[  526.728243] 		.full_name = /amba/dma@a0030000
+[  526.732584] 	WHICH USED TO BE
+[  526.735539] 		xlnx,include-sg = 0x((empty))
+[  526.739706] Received a device tree update:
+[  526.743782] 	ATTACH NODE
+[  526.746298] 		.name = dma-channel
+[  526.749589] 		.full_name = /amba/dma@a0030000/dma-channel@a0030000
+[  526.755761] Received a device tree update:
+[  526.759839] 	UPDATE PROPERTY
+[  526.762711] 		compatible = 0x786c6e782c6178692d646d612d6d6d32732d6368616e6e656c00
+[  526.770171] 	OF
+[  526.771896] 		.name = dma-channel
+[  526.775203] 		.full_name = /amba/dma@a0030000/dma-channel@a0030000
+[  526.781367] 	WHICH USED TO BE
+[  526.784324] 		compatible = 0x786c6e782c6178692d646d612d6d6d32732d6368616e6e656c00
+[  526.791786] Received a device tree update:
+[  526.795862] 	UPDATE PROPERTY
+[  526.798727] 		dma-channels = 0x00000001
+[  526.802545] 	OF
+[  526.804272] 		.name = dma-channel
+[  526.807580] 		.full_name = /amba/dma@a0030000/dma-channel@a0030000
+[  526.813743] 	WHICH USED TO BE
+[  526.816695] 		dma-channels = 0x00000001
+[  526.820514] Received a device tree update:
+[  526.824593] 	UPDATE PROPERTY
+[  526.827460] 		interrupts = 0x000000000000005900000004
+[  526.832495] 	OF
+[  526.834227] 		.name = dma-channel
+[  526.837518] 		.full_name = /amba/dma@a0030000/dma-channel@a0030000
+[  526.843690] 	WHICH USED TO BE
+[  526.846644] 		interrupts = 0x000000000000005900000004
+[  526.851676] Received a device tree update:
+[  526.855754] 	UPDATE PROPERTY
+[  526.858620] 		xlnx,datawidth = 0x00000080
+[  526.862611] 	OF
+[  526.864339] 		.name = dma-channel
+[  526.867646] 		.full_name = /amba/dma@a0030000/dma-channel@a0030000
+[  526.873810] 	WHICH USED TO BE
+[  526.876761] 		xlnx,datawidth = 0x00000080
+[  526.880753] Received a device tree update:
+[  526.884832] 	UPDATE PROPERTY
+[  526.887698] 		xlnx,device-id = 0x00000000
+[  526.891690] 	OF
+[  526.893417] 		.name = dma-channel
+[  526.896724] 		.full_name = /amba/dma@a0030000/dma-channel@a0030000
+[  526.902888] 	WHICH USED TO BE
+[  526.905832] 		xlnx,device-id = 0x00000000
+[  526.909835] Received a device tree update:
+[  526.913915] 	ATTACH NODE
+[  526.916420] 		.name = dma-channel
+[  526.919727] 		.full_name = /amba/dma@a0030000/dma-channel@a0030030
+[  526.925891] Received a device tree update:
+[  526.929969] 	UPDATE PROPERTY
+[  526.932832] 		compatible = 0x786c6e782c6178692d646d612d73326d6d2d6368616e6e656c00
+[  526.940301] 	OF
+[  526.942033] 		.name = dma-channel
+[  526.945325] 		.full_name = /amba/dma@a0030000/dma-channel@a0030030
+[  526.951496] 	WHICH USED TO BE
+[  526.954454] 		compatible = 0x786c6e782c6178692d646d612d73326d6d2d6368616e6e656c00
+[  526.961915] Received a device tree update:
+[  526.965991] 	UPDATE PROPERTY
+[  526.968849] 		dma-channels = 0x00000001
+[  526.972674] 	OF
+[  526.974410] 		.name = dma-channel
+[  526.977702] 		.full_name = /amba/dma@a0030000/dma-channel@a0030030
+[  526.983873] 	WHICH USED TO BE
+[  526.986825] 		dma-channels = 0x00000001
+[  526.990647] Received a device tree update:
+[  526.994723] 	UPDATE PROPERTY
+[  526.997582] 		interrupts = 0x000000000000005a00000004
+[  527.002622] 	OF
+[  527.004348] 		.name = dma-channel
+[  527.007656] 		.full_name = /amba/dma@a0030000/dma-channel@a0030030
+[  527.013819] 	WHICH USED TO BE
+[  527.016774] 		interrupts = 0x000000000000005a00000004
+[  527.021806] Received a device tree update:
+[  527.025884] 	UPDATE PROPERTY
+[  527.028750] 		xlnx,datawidth = 0x00000080
+[  527.032741] 	OF
+[  527.034477] 		.name = dma-channel
+[  527.037768] 		.full_name = /amba/dma@a0030000/dma-channel@a0030030
+[  527.043940] 	WHICH USED TO BE
+[  527.046891] 		xlnx,datawidth = 0x00000080
+[  527.050884] Received a device tree update:
+[  527.054962] 	UPDATE PROPERTY
+[  527.057820] 		xlnx,device-id = 0x00000001
+[  527.061819] 	OF
+[  527.063555] 		.name = dma-channel
+[  527.066854] 		.full_name = /amba/dma@a0030000/dma-channel@a0030030
+[  527.073018] 	WHICH USED TO BE
+[  527.075970] 		xlnx,device-id = 0x00000001
+[  527.080279] Received a device tree update:
+[  527.084297] 	ATTACH NODE
+[  527.086810] 		.name = axidma_chrdev
+[  527.090282] 		.full_name = //axidma_chrdev@0
+[  527.094537] Received a device tree update:
+[  527.098615] 	UPDATE PROPERTY
+[  527.101476] 		compatible = 0x786c6e782c617869646d612d63687264657600
+[  527.107730] 	OF
+[  527.109456] 		.name = axidma_chrdev
+[  527.112937] 		.full_name = //axidma_chrdev@0
+[  527.117190] 	WHICH USED TO BE
+[  527.120147] 		compatible = 0x786c6e782c617869646d612d63687264657600
+[  527.126393] Received a device tree update:
+[  527.130471] 	UPDATE PROPERTY
+[  527.133331] 		dmas = 0x00000080000000000000008000000001
+[  527.138543] 	OF
+[  527.140270] 		.name = axidma_chrdev
+[  527.143751] 		.full_name = //axidma_chrdev@0
+[  527.148004] 	WHICH USED TO BE
+[  527.150960] 		dmas = 0x00000080000000000000008000000001
+[  527.156165] Received a device tree update:
+[  527.160243] 	UPDATE PROPERTY
+[  527.163114] 		dma-names = 0x74785f6368616e6e656c0072785f6368616e6e656c00
+[  527.169793] 	OF
+[  527.171526] 		.name = axidma_chrdev
+[  527.174999] 		.full_name = //axidma_chrdev@0
+[  527.179253] 	WHICH USED TO BE
+[  527.182210] 		dma-names = 0x74785f6368616e6e656c0072785f6368616e6e656c00
+[  527.188890] Received a device tree update:
+[  527.192967] 	ADD PROPERTY
+[  527.195576] 		axi_dma_0 = 0x2f616d62612f646d6140613030333030303000
+[  527.201735] 	OF
+[  527.203470] 		.name = __symbols__
+[  527.206769] 		.full_name = /__symbols__
+[  527.210589] Received a device tree update:
+[  527.214667] 	ADD PROPERTY
+[  527.217268] 		axidma_chrdev = 0x2f2f617869646d615f636872646576403000
+[  527.223609] 	OF
+[  527.225335] 		.name = __symbols__
+[  527.228642] 		.full_name = /__symbols__
