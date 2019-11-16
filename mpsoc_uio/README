@@ -1,0 +1,9 @@
+This repo contains info on writing UIO drivers for the MPSoC.
+
+writing_uio_drivers.txt explains most of how everything is done.
+    -> interrupt_numbers.txt explains one very insidious thing you have to do
+
+mpsoc_axitimer.c and Makefile are used to build the kernel module.
+    -> compiling_mpsoc_modules.txt includes build instructions
+
+axitimer_user.c is an example userspace prorgam using the UIO driver.

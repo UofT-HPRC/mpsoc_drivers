@@ -1,0 +1,13 @@
+This is a compiled bitstream for the following block diagram:
+
+     +-----------------------------+     +--------------------------+
+     |                             |     |                          |
+  +->|pl_ps_irq   Zynq PS     M_AXI|---->|S_AXI     AXI    interrupt|--+
+  |  |                          clk|---->|clk      timer            |  |
+  |  |                             |     |                          |  |
+  |  +-----------------------------+     +--------------------------+  |
+  |                                                                    |
+  +--------------------------------------------------------------------+
+  
+I used the Fidus Sidewinder board file. The PS's clock was set to 100 MHz. The 
+AXI timer's base address is 0xA0000000
