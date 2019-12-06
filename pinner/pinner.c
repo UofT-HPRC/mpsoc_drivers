@@ -58,14 +58,21 @@ static void pinner_free_proc_info(struct proc_info *info) {
     kfree(info);
 }
 
-static int pinner_send_physlist(struct pinner_cmd *cmd, struct pinning *p) {
+static int pinner_send_physlist(struct pinner_cmd *cmd, struct pinning *p, //assumption: p->num_pages > 0
+                                unsigned long first_page_offset, unsigned total_sz)
+{
     int ret = 0;
     int n;
+    int i;
     struct pinner_physlist_entry *entries = NULL;
     
-    void *user_physlist_num_entries = cmd->physlist;
-    void *user_physlist_entries = ((void *)cmd->physlist) + offsetof(struct pinner_physlist, entries);
+    unsigned long page_sz = (1 << PAGE_SHIFT);
+    unsigned long first_pg_sz;
     
+    void *user_num_entries = cmd->physlist;
+    void *user_entries = ((void *)cmd->physlist) + offsetof(struct pinner_physlist, entries);
+    
+    //Allocate space for entries we'll copy to user space
     entries = kzalloc(p->num_pages * (sizeof(struct pinner_physlist_entry)), GFP_KERNEL);
     if (!entries) {
         printk(KERN_ALERT "pinner: could not allocate buffer of size [%lu]\n", p->num_pages * (sizeof(struct pinner_physlist_entry)));
@@ -73,11 +80,47 @@ static int pinner_send_physlist(struct pinner_cmd *cmd, struct pinning *p) {
         goto send_physlist_cleanup;
     }
     
-    //Now for the really ugly stuff: building up the physlist_entries with the 
-    //right physical addresses and lengths... ugh....
     
+    //Now for the really ugly stuff: building up the physlist_entries with the 
+    //right physical addresses and lengths
+    
+    //Special case for first page
+    first_pg_sz = (unsigned) (page_sz - first_page_offset);
+    entries[0].addr = page_to_phys(p->pages[0]) + first_page_offset;
+    if (total_sz <= first_pg_sz) {
+        //Only one thing to put in the physlist entries.
+        entries[0].len = total_sz;
+        goto done_building_entries; //TODO: write logic that doesn't use goto here
+    }
+    entries[0].len = first_pg_sz;
+    total_sz -= first_pg_sz;
+    
+    //Middle pages
+    for (i = 1; i < p->num_pages - 1; i++) {
+        entries[i].addr = page_to_phys(p->pages[i]);
+        entries[i].len = page_sz;
+        total_sz -= page_sz;
+    }
+    
+    //Special case for last page
+    entries[i].addr = page_to_phys(p->pages[i]);
+    entries[i].len = total_sz; //Maybe I shouldn't have reused the variable like this...
+    
+    done_building_entries:
     //Write the num_entries field of the user's pinner_physlist
-    n = copy_to_user(user_physlist_num_entries, &(p->num_pages), sizeof(unsigned));
+    n = copy_to_user(user_num_entries, &(p->num_pages), sizeof(unsigned));
+    if (!n) {
+        printk(KERN_ALERT "pinner: could not copy num_entries to userspace\n");
+        ret = -EAGAIN;
+        goto send_physlist_cleanup;
+    }
+    //Write the entries themselves
+    n = copy_to_user(user_entries, entries, p->num_pages * (sizeof(struct pinner_physlist_entry)));
+    if (!n) {
+        printk(KERN_ALERT "pinner: could not copy entries to userspace\n");
+        ret = -EAGAIN;
+        goto send_physlist_cleanup;
+    }
     
     send_physlist_cleanup:
     if (entries) kfree(entries);
@@ -88,12 +131,15 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
     int ret = 0;
     
     struct pinning *pin = NULL;
-    unsigned long start = 0;
+    unsigned long start;
+    unsigned long first_pg_offset;
     unsigned long page_sz = (1 << PAGE_SHIFT);
     unsigned long page_mask = (page_sz - 1);
-    int num_pages = 0;
-    int n = 0;
+    int num_pages;
+    int n;
     struct page **p = NULL;
+    
+    struct pinner_handle usr_handle;
     
     //Validate inputs from user's command
     num_pages = (cmd->usr_buf_sz + page_mask) / page_sz; // = ceil(usr_buf_sz / page_sz)
@@ -110,6 +156,7 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
     
     //Attempt to pin pages 
     start = ((unsigned long)cmd->usr_buf | page_mask) - page_mask;
+    first_pg_offset = (unsigned long)cmd->usr_buf - start;
     n = get_user_pages_fast(start, num_pages, 1, p);
     p = kmalloc(num_pages * (sizeof(struct page *)), GFP_KERNEL);
     if (!p) {
@@ -138,12 +185,20 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
     list_add(&(info->pinning_list), &(pin->list));
     
     //Write the physical address info back to userspace
-    ret = pinner_send_physlist(cmd, pin);
+    ret = pinner_send_physlist(cmd, pin, first_pg_offset, cmd->usr_buf_sz);
     if (ret < 0) {
         goto do_pin_error;
     }
     
     //Give the userspace program a handle that allows them to undo this pinning
+    usr_handle.user_magic = info->magic;
+    usr_handle.pin_magic = pin->magic;
+    n = copy_to_user(cmd->handle, &usr_handle, sizeof(struct pinner_handle));
+    if (!n) {
+        printk(KERN_ALERT "pinner: could not copy handle to userspace\n");
+        ret = -EAGAIN;
+        goto do_pin_error;
+    }
     
     return 0;
     
@@ -216,11 +271,9 @@ static ssize_t pinner_write (struct file *filp, char const __user *buf, size_t s
     }
     
     switch(cmd.cmd) {
-        case PINNER_PIN: {
-            
-            
+        case PINNER_PIN:
+            pinner_do_pin(&cmd, info);
             break;
-        }
         case PINNER_UNPIN: {
             
             break;
