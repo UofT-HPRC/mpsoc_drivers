@@ -215,6 +215,49 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
     return ret;
 }
 
+static int pinner_do_unpin(struct pinner_cmd *cmd, struct proc_info *info) {
+    struct list_head *cur; //For iterating
+    struct pinner_handle usr_handle;
+    int n;
+    struct pinning *found = NULL;
+    
+    //Copy handle from userspace
+    n = copy_from_user(&usr_handle, cmd->handle, sizeof(struct pinner_handle));
+    if (!n) {
+        printk(KERN_ALERT "pinner: could not copy command struct from userspace\n");
+        return -EAGAIN;
+    }
+    
+    //Ensure that the user's handle matches the correct user_magic. We want to
+    //make it very difficult for buggy (or malicious) user code to accidentally
+    //unpin someone else's pinnings
+    if (usr_handle.user_magic != info->magic) {
+        printk(KERN_ALERT "pinner: incorrect handle. No unpinning was performed\n");
+        return -EINVAL;
+    }
+    
+    //Search linearly through pinning structs for correct pin_magic
+    //Note: who cares if this is inefficient? It's not like this function is
+    //getting called millions of times per second
+    for (cur = info->list.next; cur != &(info->list); cur = cur->next) {
+        struct pinning *p = list_entry(cur, struct pinning, list);
+        if (usr_handle.pin_magic == p->magic) {
+            found = p;
+            break;
+        }
+    }
+    
+    if (!found) {
+        printk(KERN_ALERT "pinner: incorrect handle. No unpinning was performed\n");
+        return -EINVAL;
+    }
+    
+    //Delete the pinning
+    pinner_free_pinning(found);
+    
+    return 0;
+}
+
 static int pinner_open (struct inode *inode, struct file *filp) {
     struct proc_info *info = NULL;
     
@@ -272,10 +315,10 @@ static ssize_t pinner_write (struct file *filp, char const __user *buf, size_t s
     
     switch(cmd.cmd) {
         case PINNER_PIN:
-            pinner_do_pin(&cmd, info);
+            return pinner_do_pin(&cmd, info);
             break;
         case PINNER_UNPIN: {
-            
+            return pinner_do_unpin(&cmd, info);
             break;
         }
         default:
