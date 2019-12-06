@@ -54,6 +54,16 @@ int main() {
         goto cleanup;
     }
     
+    puts("Will now sleep for 30 seconds... do what you want with that memory until then!");
+    fflush(stdout);
+    sleep(30);
+    
+    for (int i = 0; i < 16; i++) {
+        printf("%02x ", (+mybuf[i]) & 0xFF);
+    }
+    
+    puts("");
+    
     cleanup:
     if (mybuf) free(mybuf);
     if (fd != -1) close(fd);
