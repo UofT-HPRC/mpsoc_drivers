@@ -52,7 +52,9 @@ static void pinner_free_proc_info(struct proc_info *info) {
     pinner_free_pinnings(info);
     
     //Remove from the list
+    mutex_lock(&users_mutex); //Need to watch out for race conditions
     list_del(&(info->list));
+    mutex_unlock(&users_mutex);
     
     //Free the struct itself
     kfree(info);
@@ -157,13 +159,13 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
     //Attempt to pin pages 
     start = ((unsigned long)cmd->usr_buf | page_mask) - page_mask;
     first_pg_offset = (unsigned long)cmd->usr_buf - start;
-    n = get_user_pages_fast(start, num_pages, 1, p);
     p = kmalloc(num_pages * (sizeof(struct page *)), GFP_KERNEL);
     if (!p) {
         printk(KERN_ALERT "pinner: could not allocate buffer of size [%lu]\n", num_pages * (sizeof(struct page *)));
         ret = -ENOMEM;
         goto do_pin_error;
     }
+    n = get_user_pages_fast(start, num_pages, 1, p);
     if (n != num_pages) {
         //Could not pin all the pages. Just quit and ask the user to try again
         printk(KERN_ERR "pinner: could not satisfy user request\n");
@@ -317,10 +319,9 @@ static ssize_t pinner_write (struct file *filp, char const __user *buf, size_t s
         case PINNER_PIN:
             return pinner_do_pin(&cmd, info);
             break;
-        case PINNER_UNPIN: {
+        case PINNER_UNPIN:
             return pinner_do_unpin(&cmd, info);
             break;
-        }
         default:
             printk(KERN_ALERT "pinner: unrecognized command code [%u]\n", cmd.cmd);
             return -ENOSYS;
@@ -352,7 +353,7 @@ static int __init pinner_init(void) {
     //Now that everything is safely initialized, make the driver available:
 	rc = misc_register(&pinner_miscdev);
 	if (rc < 0) {
-		printk(KERN_ERR "Could not register pinner module\n");
+		printk(KERN_ALERT "Could not register pinner module\n");
 	} else {
 		printk(KERN_ALERT "pinner module inserted\n"); 
 		registered = 1;
@@ -368,6 +369,7 @@ static void pinner_exit(void) {
     //Probably don't need to lock mutex, since driver has been unregistered
     //mutex_lock(&users_mutex);
     while (!list_empty(&users)) {
+        printk(KERN_ALERT "Warning: pinner exit function is freeing things that should have already been freed...\n");
         pinner_free_proc_info(list_entry(users.next, struct proc_info, list));
     }
     //mutex_unlock(&users_mutex);
