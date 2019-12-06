@@ -18,6 +18,7 @@ static LIST_HEAD(users);
 
 static void put_page_list(struct page **p, int num_pages) {
     int i;
+    //printk(KERN_ALERT "Entered put_page_list\n");
     for (i = 0; i < num_pages; i++) {
         //TODO: do we have to manually mark them as dirty?
         put_page(p[i]);
@@ -25,6 +26,7 @@ static void put_page_list(struct page **p, int num_pages) {
 }
 
 static void pinner_free_pinning(struct pinning *p) {
+    //printk(KERN_ALERT "Entered pinner_free_pinning\n");
     //put pages
     put_page_list(p->pages, p->num_pages);
     
@@ -39,15 +41,17 @@ static void pinner_free_pinning(struct pinning *p) {
 }
 
 static void pinner_free_pinnings(struct proc_info *info) {
+    //printk(KERN_ALERT "Entered pinner_free_pinnings\n");
     //Iterate through the list of pinnings inside this proc_info struct
     //and free them all
-    while (!list_empty(&(info->list))) {
-        struct pinning *p = list_entry(info->list.next, struct pinning, list);
+    while (!list_empty(&(info->pinning_list))) {
+        struct pinning *p = list_entry(info->pinning_list.next, struct pinning, list);
         pinner_free_pinning(p);
     }
 }
 
 static void pinner_free_proc_info(struct proc_info *info) {
+    //printk(KERN_ALERT "Entered pinner_free_proc_info\n");
     //Free all the pinnings stored in this proc_info struct
     pinner_free_pinnings(info);
     
@@ -111,14 +115,14 @@ static int pinner_send_physlist(struct pinner_cmd *cmd, struct pinning *p, //ass
     done_building_entries:
     //Write the num_entries field of the user's pinner_physlist
     n = copy_to_user(user_num_entries, &(p->num_pages), sizeof(unsigned));
-    if (!n) {
+    if (n != 0) {
         printk(KERN_ALERT "pinner: could not copy num_entries to userspace\n");
         ret = -EAGAIN;
         goto send_physlist_cleanup;
     }
     //Write the entries themselves
     n = copy_to_user(user_entries, entries, p->num_pages * (sizeof(struct pinner_physlist_entry)));
-    if (!n) {
+    if (n  != 0) {
         printk(KERN_ALERT "pinner: could not copy entries to userspace\n");
         ret = -EAGAIN;
         goto send_physlist_cleanup;
@@ -155,7 +159,6 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
         goto do_pin_error;
     }
     
-    
     //Attempt to pin pages 
     start = ((unsigned long)cmd->usr_buf | page_mask) - page_mask;
     first_pg_offset = (unsigned long)cmd->usr_buf - start;
@@ -184,7 +187,7 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
     pin->pages = p; //Note to self: look out for double-frees, since now this pointer is inside the pinning struct
     p = NULL; //For extra safety against double-freeing
     get_random_bytes(&(pin->magic), sizeof(pin->magic));
-    list_add(&(info->pinning_list), &(pin->list));
+    list_add(&(pin->list), &(info->pinning_list)); //CAREFUL: list_add adds the first argument to the second
     
     //Write the physical address info back to userspace
     ret = pinner_send_physlist(cmd, pin, first_pg_offset, cmd->usr_buf_sz);
@@ -196,7 +199,7 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
     usr_handle.user_magic = info->magic;
     usr_handle.pin_magic = pin->magic;
     n = copy_to_user(cmd->handle, &usr_handle, sizeof(struct pinner_handle));
-    if (!n) {
+    if (n != 0) {
         printk(KERN_ALERT "pinner: could not copy handle to userspace\n");
         ret = -EAGAIN;
         goto do_pin_error;
@@ -225,8 +228,8 @@ static int pinner_do_unpin(struct pinner_cmd *cmd, struct proc_info *info) {
     
     //Copy handle from userspace
     n = copy_from_user(&usr_handle, cmd->handle, sizeof(struct pinner_handle));
-    if (!n) {
-        printk(KERN_ALERT "pinner: could not copy command struct from userspace\n");
+    if (n != 0) {
+        printk(KERN_ALERT "pinner: could not copy handle from userspace\n");
         return -EAGAIN;
     }
     
@@ -234,14 +237,14 @@ static int pinner_do_unpin(struct pinner_cmd *cmd, struct proc_info *info) {
     //make it very difficult for buggy (or malicious) user code to accidentally
     //unpin someone else's pinnings
     if (usr_handle.user_magic != info->magic) {
-        printk(KERN_ALERT "pinner: incorrect handle. No unpinning was performed\n");
+        printk(KERN_ALERT "pinner: incorrect user handle. No unpinning was performed\n");
         return -EINVAL;
     }
     
     //Search linearly through pinning structs for correct pin_magic
     //Note: who cares if this is inefficient? It's not like this function is
     //getting called millions of times per second
-    for (cur = info->list.next; cur != &(info->list); cur = cur->next) {
+    for (cur = info->pinning_list.next; cur != &(info->pinning_list); cur = cur->next) {
         struct pinning *p = list_entry(cur, struct pinning, list);
         if (usr_handle.pin_magic == p->magic) {
             found = p;
@@ -250,7 +253,7 @@ static int pinner_do_unpin(struct pinner_cmd *cmd, struct proc_info *info) {
     }
     
     if (!found) {
-        printk(KERN_ALERT "pinner: incorrect handle. No unpinning was performed\n");
+        printk(KERN_ALERT "pinner: incorrect pin handle. No unpinning was performed\n");
         return -EINVAL;
     }
     
@@ -310,8 +313,8 @@ static ssize_t pinner_write (struct file *filp, char const __user *buf, size_t s
     }
     
     rc = copy_from_user(&cmd, buf, sizeof(struct pinner_cmd));
-    if (!rc) {
-        printk(KERN_ALERT "pinner: could not copy command struct from userspace\n");
+    if (rc != 0) {
+        printk(KERN_ALERT "pinner: could not copy command struct from userspace. Still need to copy [%d] bytes out of %lu\n", rc, sizeof(struct pinner_cmd));
         return -EAGAIN;
     }
     
