@@ -1,0 +1,285 @@
+#include <linux/fs.h> //struct file, struct file_operations
+#include <linux/init.h> //for __init, see code
+#include <linux/module.h> //for module init and exit macros
+#include <linux/miscdevice.h> //for misc_device_register and struct micdev
+#include <linux/uaccess.h> //For copy_to_user and copy_from_user
+#include <linux/mutex.h> //For mutexes
+#include <asm/page.h> //For PAGE_SHIFT
+#include <linux/mm.h> //Why isn't put_page in page.h?
+#include <linux/random.h> //For get_random_bytes
+#include <linux/list.h> //For linked lists
+#include <linux/slab.h> //For kzalloc, kfree
+#include <linux/stddef.h> //For offsetof
+#include "pinner.h" //Custom data types and defines shared with userspace
+#include "pinner_private.h" //Private custom data types and macros
+
+static DEFINE_MUTEX(users_mutex);
+static LIST_HEAD(users);
+
+static void put_page_list(struct page **p, int num_pages) {
+    int i;
+    for (i = 0; i < num_pages; i++) {
+        //TODO: do we have to manually mark them as dirty?
+        put_page(p[i]);
+    }
+}
+
+static void pinner_free_pinning(struct pinning *p) {
+    //put pages
+    put_page_list(p->pages, p->num_pages);
+    
+    //free page pointers
+    kfree(p->pages);
+    
+    //Remove pinning from list
+    list_del(&(p->list));
+    
+    //Free pinning struct
+    kfree(p);
+}
+
+static void pinner_free_pinnings(struct proc_info *info) {
+    //Iterate through the list of pinnings inside this proc_info struct
+    //and free them all
+    while (!list_empty(&(info->list))) {
+        struct pinning *p = list_entry(info->list.next, struct pinning, list);
+        pinner_free_pinning(p);
+    }
+}
+
+static void pinner_free_proc_info(struct proc_info *info) {
+    //Free all the pinnings stored in this proc_info struct
+    pinner_free_pinnings(info);
+    
+    //Remove from the list
+    list_del(&(info->list));
+    
+    //Free the struct itself
+    kfree(info);
+}
+
+static int pinner_send_physlist(struct pinner_cmd *cmd, struct pinning *p) {
+    int ret = 0;
+    int n;
+    struct pinner_physlist_entry *entries = NULL;
+    
+    void *user_physlist_num_entries = cmd->physlist;
+    void *user_physlist_entries = ((void *)cmd->physlist) + offsetof(struct pinner_physlist, entries);
+    
+    entries = kzalloc(p->num_pages * (sizeof(struct pinner_physlist_entry)), GFP_KERNEL);
+    if (!entries) {
+        printk(KERN_ALERT "pinner: could not allocate buffer of size [%lu]\n", p->num_pages * (sizeof(struct pinner_physlist_entry)));
+        ret = -ENOMEM;
+        goto send_physlist_cleanup;
+    }
+    
+    //Now for the really ugly stuff: building up the physlist_entries with the 
+    //right physical addresses and lengths... ugh....
+    
+    //Write the num_entries field of the user's pinner_physlist
+    n = copy_to_user(user_physlist_num_entries, &(p->num_pages), sizeof(unsigned));
+    
+    send_physlist_cleanup:
+    if (entries) kfree(entries);
+    return ret;
+}
+
+static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
+    int ret = 0;
+    
+    struct pinning *pin = NULL;
+    unsigned long start = 0;
+    unsigned long page_sz = (1 << PAGE_SHIFT);
+    unsigned long page_mask = (page_sz - 1);
+    int num_pages = 0;
+    int n = 0;
+    struct page **p = NULL;
+    
+    //Validate inputs from user's command
+    num_pages = (cmd->usr_buf_sz + page_mask) / page_sz; // = ceil(usr_buf_sz / page_sz)
+    if (num_pages > PINNER_MAX_PAGES) {
+        printk(KERN_ALERT "pinner: exceeded maximum pinning size\n");
+        ret = -EINVAL;
+        goto do_pin_error;
+    } else if (num_pages <= 0) {
+        printk(KERN_ALERT "pinner: invalid pinning size\n");
+        ret = -EINVAL;
+        goto do_pin_error;
+    }
+    
+    
+    //Attempt to pin pages 
+    start = ((unsigned long)cmd->usr_buf | page_mask) - page_mask;
+    n = get_user_pages_fast(start, num_pages, 1, p);
+    p = kmalloc(num_pages * (sizeof(struct page *)), GFP_KERNEL);
+    if (!p) {
+        printk(KERN_ALERT "pinner: could not allocate buffer of size [%lu]\n", num_pages * (sizeof(struct page *)));
+        ret = -ENOMEM;
+        goto do_pin_error;
+    }
+    if (n != num_pages) {
+        //Could not pin all the pages. Just quit and ask the user to try again
+        printk(KERN_ERR "pinner: could not satisfy user request\n");
+        ret = -EAGAIN;
+        goto do_pin_error;
+    }
+    
+    //Maintain our own internal bookkeeping (i.e. add pinning info to list inside proc_info)
+    pin = kzalloc(sizeof(struct pinning), GFP_KERNEL);
+    if (!pin) {
+        printk(KERN_ALERT "pinner: could not allocate buffer of size [%lu]\n", sizeof(struct pinning));
+        ret = -ENOMEM;
+        goto do_pin_error;
+    }
+    pin->num_pages = num_pages;
+    pin->pages = p; //Note to self: look out for double-frees, since now this pointer is inside the pinning struct
+    p = NULL; //For extra safety against double-freeing
+    get_random_bytes(&(pin->magic), sizeof(pin->magic));
+    list_add(&(info->pinning_list), &(pin->list));
+    
+    //Write the physical address info back to userspace
+    ret = pinner_send_physlist(cmd, pin);
+    if (ret < 0) {
+        goto do_pin_error;
+    }
+    
+    //Give the userspace program a handle that allows them to undo this pinning
+    
+    return 0;
+    
+    do_pin_error:
+    
+    if (pin) {
+        pinner_free_pinning(pin);
+    } else if (p) {
+        //This is in an else if, since p is inside the pinning struct and will
+        //be freed in the call to pinner_free_pinning(p)
+        put_page_list(p, num_pages);
+        kfree(p);
+    }
+    return ret;
+}
+
+static int pinner_open (struct inode *inode, struct file *filp) {
+    struct proc_info *info = NULL;
+    
+	//Allocate and insert a new proc_info. Values should be initialized to zero
+    info = kzalloc(sizeof(struct proc_info), GFP_KERNEL);
+    if (!info) {
+        printk(KERN_ALERT "Could not open pinner driver\n");
+        return -ENOMEM;
+    }
+    
+    //Initialize list of pinnings
+    INIT_LIST_HEAD(&(info->pinning_list));
+    
+    //Initialize the magic
+    get_random_bytes(&(info->magic), sizeof(info->magic));
+    
+    //Add to head of list
+    mutex_lock(&users_mutex); //Need to watch out for race conditions
+    list_add(&(info->list), &users);
+    mutex_unlock(&users_mutex);
+    
+    //Keep link to this struct in filp->private_data
+	filp->private_data = info;
+    
+    printk(KERN_ALERT "Succesfully opened pinner driver\n");
+	return 0; //SUCCESS
+}
+
+static int pinner_release (struct inode *inode, struct file *filp) {
+    struct proc_info *info = filp->private_data;
+    
+	//Clean up this proc_info struct
+    pinner_free_proc_info(info);
+    
+    printk(KERN_ALERT "Closed pinner driver\n");
+	return 0;
+}
+
+//Write function. Handles commands from userspace
+static ssize_t pinner_write (struct file *filp, char const __user *buf, size_t sz, loff_t *off) {
+    int rc;
+    struct pinner_cmd cmd;
+    struct proc_info *info = filp->private_data;
+    
+    if (sz != sizeof(struct pinner_cmd)) {
+        printk(KERN_ALERT "pinner: bad command struct size [%lu], should be [%lu]\n", sz, sizeof(struct pinner_cmd));
+        return -EINVAL;
+    }
+    
+    rc = copy_from_user(&cmd, buf, sizeof(struct pinner_cmd));
+    if (!rc) {
+        printk(KERN_ALERT "pinner: could not copy command struct from userspace\n");
+        return -EAGAIN;
+    }
+    
+    switch(cmd.cmd) {
+        case PINNER_PIN: {
+            
+            
+            break;
+        }
+        case PINNER_UNPIN: {
+            
+            break;
+        }
+        default:
+            printk(KERN_ALERT "pinner: unrecognized command code [%u]\n", cmd.cmd);
+            return -ENOSYS;
+    }
+	
+	return 0;
+}
+
+
+//Structs for registering with misc devices
+static struct file_operations pinner_fops = {
+	.open = pinner_open,
+	.write = pinner_write,
+	.release = pinner_release
+};
+
+static struct miscdevice pinner_miscdev = { 
+	.minor = MISC_DYNAMIC_MINOR, 
+	.name = "pinner",
+	.fops = &pinner_fops,
+	.mode = 0666
+};
+
+static int registered = 0;
+
+static int __init pinner_init(void) { 
+    int rc;
+    
+    //Now that everything is safely initialized, make the driver available:
+	rc = misc_register(&pinner_miscdev);
+	if (rc < 0) {
+		printk(KERN_ERR "Could not register pinner module\n");
+	} else {
+		printk(KERN_ALERT "pinner module inserted\n"); 
+		registered = 1;
+	}
+    
+	return rc; //Propagate error code
+} 
+
+static void pinner_exit(void) { 
+    //Remove all pinnings and free all proc_infos	
+	if (registered) misc_deregister(&pinner_miscdev);
+	
+    //Probably don't need to lock mutex, since driver has been unregistered
+    //mutex_lock(&users_mutex);
+    while (!list_empty(&users)) {
+        pinner_free_proc_info(list_entry(users.next, struct proc_info, list));
+    }
+    //mutex_unlock(&users_mutex);
+    
+	printk(KERN_ALERT "pinner module removed\n"); 
+} 
+
+MODULE_LICENSE("Dual BSD/GPL"); 
+
+module_init(pinner_init); 
+module_exit(pinner_exit);
