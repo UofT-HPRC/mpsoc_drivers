@@ -6,6 +6,7 @@
 
 #define PINNER_PIN 1
 #define PINNER_UNPIN 2
+#define PINNER_FLUSH 3
 
 //Normally I would want this to be an opaque struct, but there's no easy way to
 //do that when kernel and userspace share a header

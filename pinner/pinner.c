@@ -5,11 +5,12 @@
 #include <linux/uaccess.h> //For copy_to_user and copy_from_user
 #include <linux/mutex.h> //For mutexes
 #include <asm/page.h> //For PAGE_SHIFT
-#include <linux/mm.h> //Why isn't put_page in page.h?
+#include <linux/mm.h> //For find_vma
 #include <linux/random.h> //For get_random_bytes
 #include <linux/list.h> //For linked lists
 #include <linux/slab.h> //For kzalloc, kfree
 #include <linux/stddef.h> //For offsetof
+#include <asm/cacheflush.h> //For flush_cache_range
 #include "pinner.h" //Custom data types and defines shared with userspace
 #include "pinner_private.h" //Private custom data types and macros
 
@@ -325,6 +326,16 @@ static ssize_t pinner_write (struct file *filp, char const __user *buf, size_t s
         case PINNER_UNPIN:
             return pinner_do_unpin(&cmd, info);
             break;
+        case PINNER_FLUSH: {
+            //Find the VMA containing the user's buffer
+            struct vm_area_struct *vma = find_vma(current->mm, (unsigned long)cmd.usr_buf);
+            if (!vma) {
+                printk(KERN_ALERT "pinner: unrecognized user virtual address\n");
+                return -EINVAL;
+            }
+            flush_cache_range(vma, (unsigned long) cmd.usr_buf, (unsigned long) cmd.usr_buf + cmd.usr_buf_sz);
+            break;
+        }
         default:
             printk(KERN_ALERT "pinner: unrecognized command code [%u]\n", cmd.cmd);
             return -ENOSYS;
