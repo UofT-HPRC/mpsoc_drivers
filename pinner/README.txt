@@ -31,8 +31,9 @@ pinner_cmd struct looks like this:
     };
 
 cmd:
-    Can be either PINNER_PIN or PINNER_UNPIN.
+    Can be either PINNER_PIN, PINNER_FLUSH, or PINNER_UNPIN.
     With PINNER_PIN, fill in usr_buf, usr_buf_sz, handle, and physlist
+    With PINNER_FLUSH, fill in usr_buf and usr_buf_sz
     With PINNER_UNPIN, you only need to fill in handle
 
 usr_buf:

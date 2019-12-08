@@ -11,28 +11,50 @@
 #include <linux/slab.h> //For kzalloc, kfree
 #include <linux/stddef.h> //For offsetof
 #include <asm/cacheflush.h> //For flush_cache_range
+#include <linux/scatterlist.h> //For scatterlist struct
+#include <linux/dma-mapping.h> //For dma_map_X
 #include "pinner.h" //Custom data types and defines shared with userspace
 #include "pinner_private.h" //Private custom data types and macros
 
 static DEFINE_MUTEX(users_mutex);
 static LIST_HEAD(users);
 
+//Forward-declare miscdev struct
+static struct miscdevice pinner_miscdev;
+
+//This function only used in error-handling code
 static void put_page_list(struct page **p, int num_pages) {
     int i;
-    //printk(KERN_ALERT "Entered put_page_list\n");
     for (i = 0; i < num_pages; i++) {
-        //TODO: do we have to manually mark them as dirty?
         put_page(p[i]);
     }
 }
 
-static void pinner_free_pinning(struct pinning *p) {
-    //printk(KERN_ALERT "Entered pinner_free_pinning\n");
-    //put pages
-    put_page_list(p->pages, p->num_pages);
+static void pinner_put_sglist_pages(struct scatterlist *sglist, int num_entries) {
+    int i;
     
-    //free page pointers
-    kfree(p->pages);
+    if(!sglist) {
+        //sglist can be NULL in error-handling paths.
+        //Gracefully ignore this function call. 
+        return;
+    }
+    
+    //This is the counterpart to get_user_pages_fast
+    for (i = 0; i < num_entries; i++) {
+        put_page(sg_page(&(sglist[i])));
+    }
+}
+
+static void pinner_free_pinning(struct pinning *p) {
+    //Unmap the scatterlist
+    //TODO: allow user to set direction
+    dma_unmap_sg(pinner_miscdev.this_device, p->sglist, p->num_sg_ents, DMA_BIDIRECTIONAL);
+    
+    //Put pages
+    pinner_put_sglist_pages(p->sglist, p->num_sg_ents);
+    
+    //Free scatterlist
+    kfree(p->sglist);
     
     //Remove pinning from list
     list_del(&(p->list));
@@ -65,64 +87,39 @@ static void pinner_free_proc_info(struct proc_info *info) {
     kfree(info);
 }
 
-static int pinner_send_physlist(struct pinner_cmd *cmd, struct pinning *p, //assumption: p->num_pages > 0
-                                unsigned long first_page_offset, unsigned total_sz)
-{
+static int pinner_send_physlist(struct pinner_cmd *cmd, struct pinning *p) {
     int ret = 0;
     int n;
     int i;
     struct pinner_physlist_entry *entries = NULL;
     
-    unsigned long page_sz = (1 << PAGE_SHIFT);
-    unsigned long first_pg_sz;
-    
     void *user_num_entries = cmd->physlist;
     void *user_entries = ((void *)cmd->physlist) + offsetof(struct pinner_physlist, entries);
     
-    //Allocate space for entries we'll copy to user space
-    entries = kzalloc(p->num_pages * (sizeof(struct pinner_physlist_entry)), GFP_KERNEL);
+    //Allocate space for the entries we'll copy to user space
+    entries = kzalloc(p->num_sg_ents * (sizeof(struct pinner_physlist_entry)), GFP_KERNEL);
     if (!entries) {
-        printk(KERN_ALERT "pinner: could not allocate buffer of size [%lu]\n", p->num_pages * (sizeof(struct pinner_physlist_entry)));
+        printk(KERN_ALERT "pinner: could not allocate buffer of size [%lu]\n", p->num_sg_ents * (sizeof(struct pinner_physlist_entry)));
         ret = -ENOMEM;
         goto send_physlist_cleanup;
     }
     
-    
-    //Now for the really ugly stuff: building up the physlist_entries with the 
-    //right physical addresses and lengths
-    
-    //Special case for first page
-    first_pg_sz = (unsigned) (page_sz - first_page_offset);
-    entries[0].addr = page_to_phys(p->pages[0]) + first_page_offset;
-    if (total_sz <= first_pg_sz) {
-        //Only one thing to put in the physlist entries.
-        entries[0].len = total_sz;
-        goto done_building_entries; //TODO: write logic that doesn't use goto here
-    }
-    entries[0].len = first_pg_sz;
-    total_sz -= first_pg_sz;
-    
-    //Middle pages
-    for (i = 1; i < p->num_pages - 1; i++) {
-        entries[i].addr = page_to_phys(p->pages[i]);
-        entries[i].len = page_sz;
-        total_sz -= page_sz;
+    //Walk through the struct scatterlist array in the pinning and write the
+    //information into the struct_physlist_entries
+    for (i = 0; i < p->num_sg_ents; i++) {
+        entries[i].addr = p->sglist[i].dma_address;
+        entries[i].len = p->sglist[i].length;
     }
     
-    //Special case for last page
-    entries[i].addr = page_to_phys(p->pages[i]);
-    entries[i].len = total_sz; //Maybe I shouldn't have reused the variable like this...
-    
-    done_building_entries:
     //Write the num_entries field of the user's pinner_physlist
-    n = copy_to_user(user_num_entries, &(p->num_pages), sizeof(unsigned));
+    n = copy_to_user(user_num_entries, &(p->num_sg_ents), sizeof(unsigned));
     if (n != 0) {
         printk(KERN_ALERT "pinner: could not copy num_entries to userspace\n");
         ret = -EAGAIN;
         goto send_physlist_cleanup;
     }
     //Write the entries themselves
-    n = copy_to_user(user_entries, entries, p->num_pages * (sizeof(struct pinner_physlist_entry)));
+    n = copy_to_user(user_entries, entries, p->num_sg_ents * (sizeof(struct pinner_physlist_entry)));
     if (n  != 0) {
         printk(KERN_ALERT "pinner: could not copy entries to userspace\n");
         ret = -EAGAIN;
@@ -132,6 +129,48 @@ static int pinner_send_physlist(struct pinner_cmd *cmd, struct pinning *p, //ass
     send_physlist_cleanup:
     if (entries) kfree(entries);
     return ret;
+}
+
+static int pinner_alloc_and_fill_sglist(struct page **page_arr, int num_pages, 
+            struct pinning *p, unsigned long first_page_offset, unsigned total_sz) 
+{
+    int i;
+    
+    //Make sure inputs are valid
+    if (!page_arr || num_pages <= 0 || !p) {
+        printk(KERN_ALERT "pinner: internal error when building scatterlist\n");
+        return -EINVAL;
+    }
+    
+    //Allocate an array of struct scatterlists in the pinning
+    p->sglist = kzalloc(num_pages * (sizeof(struct scatterlist)), GFP_KERNEL);
+    if (!(p->sglist)) {
+        printk(KERN_ALERT "pinner: could not allocate buffer of size [%lu]\n", num_pages * (sizeof(struct scatterlist)));
+        return -ENOMEM;
+    }
+    
+    //This code is based off an answer on this stackoverflow post:
+    //https://stackoverflow.com/questions/5539375/linux-kernel-device-driver-to-dma-from-a-device-into-user-space-memory
+    //First page
+    sg_set_page(&(p->sglist[0]), page_arr[0], PAGE_SIZE - first_page_offset, first_page_offset);
+    p->sglist[0].dma_address = page_to_phys(page_arr[0]);
+    //Middle pages
+    for (i = 1; i < num_pages - 1; i++) {
+        sg_set_page(&(p->sglist[i]), page_arr[i], PAGE_SIZE, 0);
+        p->sglist[i].dma_address = page_to_phys(page_arr[i]);
+    }
+    //Last page
+    if (num_pages > 1) {
+        sg_set_page(
+            &(p->sglist[num_pages-1]), page_arr[num_pages-1],
+            total_sz - (PAGE_SIZE - first_page_offset) - (num_pages-2)*PAGE_SIZE,
+            0
+        );
+        p->sglist[num_pages-1].dma_address = page_to_phys(page_arr[num_pages-1]);
+    }
+    
+    //Success
+    return 0;
 }
 
 static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
@@ -184,14 +223,28 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
         ret = -ENOMEM;
         goto do_pin_error;
     }
-    pin->num_pages = num_pages;
-    pin->pages = p; //Note to self: look out for double-frees, since now this pointer is inside the pinning struct
+    pin->num_sg_ents = num_pages;
+    ret = pinner_alloc_and_fill_sglist(p, num_pages, pin, first_pg_offset, cmd->usr_buf_sz);
+    if (ret < 0) {
+        goto do_pin_error;
+    }
+    //Note to self: look out for double-frees, since now these pages are managed by the pinning struct
     p = NULL; //For extra safety against double-freeing
     get_random_bytes(&(pin->magic), sizeof(pin->magic));
     list_add(&(pin->list), &(info->pinning_list)); //CAREFUL: list_add adds the first argument to the second
     
+    //Perform the DMA mapping (whatever that means)
+    //Well, I know it eventually defers to some architecture-specific assmebly
+    //code, so I'm guess it turns off the cache (which is what I want)
+    //TODO: allow user to set direction
+    ret = dma_map_sg(pinner_miscdev.this_device, pin->sglist, pin->num_sg_ents, DMA_BIDIRECTIONAL);
+    if (ret < 0) {
+        printk(KERN_ALERT "pinner: Could not perform dma_map_sg\n");
+        goto do_pin_error;
+    }
+    
     //Write the physical address info back to userspace
-    ret = pinner_send_physlist(cmd, pin, first_pg_offset, cmd->usr_buf_sz);
+    ret = pinner_send_physlist(cmd, pin);
     if (ret < 0) {
         goto do_pin_error;
     }
@@ -219,6 +272,51 @@ static int pinner_do_pin(struct pinner_cmd *cmd, struct proc_info *info) {
         kfree(p);
     }
     return ret;
+}
+
+
+static int pinner_do_flush(struct pinner_cmd *cmd, struct proc_info *info) {
+    struct list_head *cur; //For iterating
+    struct pinner_handle usr_handle;
+    int n;
+    struct pinning *found = NULL;
+    
+    //Copy handle from userspace
+    n = copy_from_user(&usr_handle, cmd->handle, sizeof(struct pinner_handle));
+    if (n != 0) {
+        printk(KERN_ALERT "pinner: flush: could not copy handle from userspace\n");
+        return -EAGAIN;
+    }
+    
+    //Ensure that the user's handle matches the correct user_magic. We want to
+    //make it very difficult for buggy (or malicious) user code to accidentally
+    //unpin someone else's pinnings
+    if (usr_handle.user_magic != info->magic) {
+        printk(KERN_ALERT "pinner: incorrect user handle. No unpinning was performed\n");
+        return -EINVAL;
+    }
+    
+    //Search linearly through pinning structs for correct pin_magic
+    //Note: who cares if this is inefficient? It's not like this function is
+    //getting called millions of times per second
+    for (cur = info->pinning_list.next; cur != &(info->pinning_list); cur = cur->next) {
+        struct pinning *p = list_entry(cur, struct pinning, list);
+        if (usr_handle.pin_magic == p->magic) {
+            found = p;
+            break;
+        }
+    }
+    
+    if (!found) {
+        printk(KERN_ALERT "pinner: incorrect pin handle. No unpinning was performed\n");
+        return -EINVAL;
+    }
+    
+    //Perform the cache flushing (I hope this works!)
+    //TODO: allow user to set direction
+    dma_sync_sg_for_cpu(pinner_miscdev.this_device, found->sglist, found->num_sg_ents, DMA_BIDIRECTIONAL);
+    dma_sync_sg_for_device(pinner_miscdev.this_device, found->sglist, found->num_sg_ents, DMA_BIDIRECTIONAL);
+    return 0;
 }
 
 static int pinner_do_unpin(struct pinner_cmd *cmd, struct proc_info *info) {
@@ -327,13 +425,7 @@ static ssize_t pinner_write (struct file *filp, char const __user *buf, size_t s
             return pinner_do_unpin(&cmd, info);
             break;
         case PINNER_FLUSH: {
-            //Find the VMA containing the user's buffer
-            struct vm_area_struct *vma = find_vma(current->mm, (unsigned long)cmd.usr_buf);
-            if (!vma) {
-                printk(KERN_ALERT "pinner: unrecognized user virtual address\n");
-                return -EINVAL;
-            }
-            flush_cache_range(vma, (unsigned long) cmd.usr_buf, (unsigned long) cmd.usr_buf + cmd.usr_buf_sz);
+            return pinner_do_flush(&cmd, info);
             break;
         }
         default:
