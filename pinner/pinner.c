@@ -10,7 +10,6 @@
 #include <linux/list.h> //For linked lists
 #include <linux/slab.h> //For kzalloc, kfree
 #include <linux/stddef.h> //For offsetof
-#include <asm/cacheflush.h> //For flush_cache_range
 #include <linux/scatterlist.h> //For scatterlist struct
 #include <linux/dma-mapping.h> //For dma_map_X
 #include "pinner.h" //Custom data types and defines shared with userspace
@@ -107,7 +106,7 @@ static int pinner_send_physlist(struct pinner_cmd *cmd, struct pinning *p) {
     //Walk through the struct scatterlist array in the pinning and write the
     //information into the struct_physlist_entries
     for (i = 0; i < p->num_sg_ents; i++) {
-        entries[i].addr = p->sglist[i].dma_address;
+        entries[i].addr = p->sglist[i].dma_address + p->sglist[i].offset;
         entries[i].len = p->sglist[i].length;
     }
     
@@ -135,6 +134,7 @@ static int pinner_alloc_and_fill_sglist(struct page **page_arr, int num_pages,
             struct pinning *p, unsigned long first_page_offset, unsigned total_sz) 
 {
     int i;
+    unsigned first_page_sz;
     
     //Make sure inputs are valid
     if (!page_arr || num_pages <= 0 || !p) {
@@ -152,7 +152,12 @@ static int pinner_alloc_and_fill_sglist(struct page **page_arr, int num_pages,
     //This code is based off an answer on this stackoverflow post:
     //https://stackoverflow.com/questions/5539375/linux-kernel-device-driver-to-dma-from-a-device-into-user-space-memory
     //First page
-    sg_set_page(&(p->sglist[0]), page_arr[0], PAGE_SIZE - first_page_offset, first_page_offset);
+    if (total_sz < PAGE_SIZE - first_page_offset) {
+        first_page_sz = total_sz;
+    } else {
+        first_page_sz = PAGE_SIZE - first_page_offset;
+    }
+    sg_set_page(&(p->sglist[0]), page_arr[0], first_page_sz, first_page_offset);
     p->sglist[0].dma_address = page_to_phys(page_arr[0]);
     //Middle pages
     for (i = 1; i < num_pages - 1; i++) {
