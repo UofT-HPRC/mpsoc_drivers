@@ -319,7 +319,7 @@ static int pinner_do_flush(struct pinner_cmd *cmd, struct proc_info *info) {
     
     //Perform the cache flushing (I hope this works!)
     //TODO: allow user to set direction
-    dma_sync_sg_for_cpu(pinner_miscdev.this_device, found->sglist, found->num_sg_ents, DMA_BIDIRECTIONAL);
+    //dma_sync_sg_for_cpu(pinner_miscdev.this_device, found->sglist, found->num_sg_ents, DMA_BIDIRECTIONAL);
     dma_sync_sg_for_device(pinner_miscdev.this_device, found->sglist, found->num_sg_ents, DMA_BIDIRECTIONAL);
     return 0;
 }
