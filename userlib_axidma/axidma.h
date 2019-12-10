@@ -6,11 +6,13 @@
 #ifndef AXIDMA_H
 #define AXIDMA_H 1
 
+//Started adding these version tags, cause I'm starting to lose track of what's
+//going on. This code needs to be maintained in several places
+#define AXIDMA_USERLIB_VERSION_MAJOR 1
+#define AXIDMA_USERLIB_VERSION_MINOR 1
+
 #include "pinner.h"
 
-#define SG_OUT_OF_MEM -1
-#define BUF_OUT_OF_MEM -2
-#define AXIDMA_OTHER_ERROR -3
 
 #define AXIDMA_NOT_FOUND 0xFFFFFFFF
 
@@ -41,7 +43,7 @@ typedef struct {
         unsigned int_err    :1;
         unsigned slave_err  :1;
         unsigned decode_err :1;
-        unsigned success    :1;
+        unsigned complete   :1;
     } status;
     
     unsigned app0           :32;
@@ -67,8 +69,9 @@ typedef struct _sg_entry {
     struct _sg_entry *prev;
     struct _sg_entry *next;
     
-    //Offset into virtual memory. Used when writing the SG list to memory.
-    unsigned sg_offset; 
+    //Offset into virtual memory. 
+    unsigned sg_offset; //Used when writing the SG list to memory.
+    unsigned data_offset; //Used when returning data to user
     
     //Fields in the ADI DMA SG entry
     //unsigned long nextdesc_phys; //Can (and should) compute this on the fly
@@ -84,15 +87,31 @@ typedef struct _sg_entry {
 */
 typedef struct {
     sg_entry sentinel; //Head of linked list of sg_entries
+    sg_entry *to_vist; //Used when returning buffer statuses
     
     void *sg_buf; //User virtual address to start of SG entry memory
     unsigned sg_offset; //Offset into sg_buf where next SG entry will go
     physlist const *sg_plist; //Phyiscal address information for SG list
     
-    void const *data_buf; //User virtual address to start of data memory
+    void *data_buf; //User virtual address to start of data memory
     unsigned data_offset; //Offset into data_buf where next buffer will be allocated
     physlist const *data_plist; //Physical address information for data buffer
 } sg_list;
+
+typedef enum {
+    TRANSFER_SUCCESS,
+    TRANSFER_FAILED,
+    END_OF_LIST
+} buf_code;
+
+/*
+ * Struct with info about a buffer returned by the AXI DMA 
+*/
+typedef struct {
+    void *base;
+    unsigned len;
+    buf_code code;
+} s2mm_buf;
 
 //Functions to open and close an AXI DMA context.
 axidma_ctx* axidma_open(char const* path);
@@ -100,10 +119,18 @@ void axidma_close(axidma_ctx *ctx);
 
 //Functions to create and delete an sg_list objext
 sg_list *axidma_list_new(void *sg_buf, physlist const *sg_plist,
-                         void const *data_buf, physlist const *data_plist);
+                         void *data_buf, physlist const *data_plist);
 void axidma_list_del(sg_list *lst);
 
 //Functions for modifying an sg_list
+
+
+typedef enum {
+    ADD_ENTRY_SUCCESS,
+    ADD_ENTRY_SG_OOM,
+    ADD_ENTRY_BUF_OOM,
+    ADD_ENTRY_ERROR
+} add_entry_code;
 
 /*
  * Apportions a new buffer from the the user's data buffer, and appends the
@@ -112,7 +139,7 @@ void axidma_list_del(sg_list *lst);
  * Returns 0 on success, SG_OUT_OF_MEM if there is no space for the next SG 
  * entry, or BUF_OUT_OF_MEM if there is no space for the desired buffer
 */
-int axidma_add_entry(sg_list *lst, unsigned sz);
+add_entry_code axidma_add_entry(sg_list *lst, unsigned sz);
 
 /*
  * Clears all the entries in an sg_list 
@@ -121,9 +148,15 @@ void axidma_clear_list(sg_list *lst);
 
 /*
  * Writes the scatter-gather list entries to memory, then starts the transfer.
+ * Set wait_irq to 0 if you don't want to wait for the interrupt
  * TODO: find clean way to return information about transfer status
 */
-void axidma_s2mm_transfer(axidma_ctx *ctx, sg_list *lst);
+void axidma_s2mm_transfer(axidma_ctx *ctx, sg_list *lst, int wait_irq);
+
+/*
+ * Used for traversing buffers returned from an S2MM trasnfer
+*/
+s2mm_buf axidma_dequeue_s2mm_buf(sg_list *lst);
 
 #undef physlist
 #undef handle

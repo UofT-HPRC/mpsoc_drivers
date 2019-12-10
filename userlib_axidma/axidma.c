@@ -109,7 +109,7 @@ static void sg_entry_add_list_before(sg_entry *head, sg_entry *sentinel) {
 
 //Create an sg_list object
 sg_list *axidma_list_new(void *sg_buf, physlist const *sg_plist,
-                         void const *data_buf, physlist const *data_plist) 
+                         void *data_buf, physlist const *data_plist) 
 {
     sg_list *lst = malloc(sizeof(sg_list));
     if (!lst) {
@@ -118,6 +118,7 @@ sg_list *axidma_list_new(void *sg_buf, physlist const *sg_plist,
     }
     
     sg_entry_init(&(lst->sentinel));
+    lst->to_vist = NULL;
     
     lst->sg_buf = sg_buf;
     lst->sg_plist = sg_plist;
@@ -229,11 +230,11 @@ static unsigned find_contiguous_after(physlist const *plist, unsigned offset, un
  * Returns 0 on success, SG_OUT_OF_MEM if there is no space for the next SG 
  * entry, or BUF_OUT_OF_MEM if there is no space for the desired buffer
 */
-int axidma_add_entry(sg_list *lst, unsigned sz) {
+add_entry_code axidma_add_entry(sg_list *lst, unsigned sz) {
     //Before we go down this road, check that the function arugments make sense
     if (!lst || !sz) {
         fprintf(stderr, "axidma_add_entry: Invalid function argument\n");
-        return AXIDMA_OTHER_ERROR;
+        return ADD_ENTRY_ERROR;
     }
     
     //Set up some variables we'll be using. We do not modify the state of lst
@@ -255,7 +256,7 @@ int axidma_add_entry(sg_list *lst, unsigned sz) {
     unsigned offset_in_entry;
     int ind = get_entry_index(lst->data_plist, data_offset, &offset_in_entry);
     if (ind == -1) {
-        ret = BUF_OUT_OF_MEM;
+        ret = ADD_ENTRY_BUF_OOM;
         goto axidma_add_entry_error;
     }
     
@@ -269,7 +270,7 @@ int axidma_add_entry(sg_list *lst, unsigned sz) {
         //Check if there would be room for an SG descriptor
         sg_offset = find_contiguous_after(lst->sg_plist, sg_offset, sizeof(sg_descriptor));
         if (sg_offset == AXIDMA_NOT_FOUND) {
-            ret = SG_OUT_OF_MEM;
+            ret = ADD_ENTRY_SG_OOM;
             goto axidma_add_entry_error;
         }
         
@@ -277,10 +278,12 @@ int axidma_add_entry(sg_list *lst, unsigned sz) {
         sg_entry *e = malloc(sizeof(sg_entry));
         if (!e) {
             perror("Could not allocate sg_entry");
-            ret = AXIDMA_OTHER_ERROR;
+            ret = ADD_ENTRY_ERROR;
             goto axidma_add_entry_error;
         }
         e->sg_offset = sg_offset;
+        e->data_offset = data_offset; //If a buffer spans several entries, 
+                                      //only use the data_offset from the first
         e->buf_phys = virt_to_phys(lst->data_plist, data_offset);
         sg_entry_add_before(&sentinel, e);
         e->is_EOF = 0; //These get set later
@@ -304,7 +307,7 @@ int axidma_add_entry(sg_list *lst, unsigned sz) {
         ind++;
         if (ind >= lst->data_plist->num_entries) {
             //No entries left
-            ret = BUF_OUT_OF_MEM;
+            ret = ADD_ENTRY_BUF_OOM;
             goto axidma_add_entry_error;
         }
     }
@@ -319,7 +322,7 @@ int axidma_add_entry(sg_list *lst, unsigned sz) {
     lst->sg_offset = sg_offset;
     lst->data_offset = data_offset;
     
-    return 0; //Success
+    return ADD_ENTRY_SUCCESS; //Success
     
     axidma_add_entry_error:
     
@@ -330,6 +333,7 @@ int axidma_add_entry(sg_list *lst, unsigned sz) {
 //Actually writes an entry into RAM
 static void s2mm_write_sg_entry(void *sg_buf, physlist const *sg_plist, sg_entry *e) {
     DBG_PRINT("%d", e->sg_offset);
+    DBG_PRINT("%d", e->data_offset);
     DBG_PRINT("%d", e->len);
     DBG_PRINT("%d", e->is_SOF);
     DBG_PRINT("%d", e->is_EOF);
@@ -353,9 +357,10 @@ static void s2mm_write_sg_entry(void *sg_buf, physlist const *sg_plist, sg_entry
 
 /*
  * Writes the scatter-gather list entries to memory, then starts the transfer.
+ * Set wait_irq to 0 if you don't want to wait for the interrupt
  * TODO: find clean way to return information about transfer status
 */
-void axidma_s2mm_transfer(axidma_ctx *ctx, sg_list *lst) {
+void axidma_s2mm_transfer(axidma_ctx *ctx, sg_list *lst, int wait_irq) {
     //Validate inputs, just in case
     if (!ctx) {
         fprintf(stderr, "axidma_s2mm_transfer: invalid NULL context\n");
@@ -369,6 +374,9 @@ void axidma_s2mm_transfer(axidma_ctx *ctx, sg_list *lst) {
         fprintf(stderr, "axidma_s2mm_transfer: invalid list with no SG entries\n");
         return;
     }
+    
+    //Set the to_visit field
+    lst->to_vist = lst->sentinel.next;
     
     //Step through linked list of SG entries and write each one to RAM
     for (sg_entry *e = lst->sentinel.next; e != &(lst->sentinel); e = e->next) {
@@ -392,17 +400,63 @@ void axidma_s2mm_transfer(axidma_ctx *ctx, sg_list *lst) {
     regs->S2MM_taildesc_lsb = (uint32_t) (taildesc_phys & 0xFFFFFFFF);
     regs->S2MM_taildesc_msb = (uint32_t) ((taildesc_phys>>32) & 0xFFFFFFFF);
     
-    
-    //At this point, transfer has started. Wait for the interrupt!
-    puts("Waiting for DMA to finish!");
-    fflush(stdout);
-    
-    unsigned pending;
-    read(ctx->fd, &pending, sizeof(pending));
+    if (wait_irq) {
+        //At this point, transfer has started. Wait for the interrupt!
+        puts("Waiting for DMA to finish!");
+        fflush(stdout);
+        
+        unsigned pending;
+        read(ctx->fd, &pending, sizeof(pending));
+    }
     
     return;
 }
 
+/*
+ * Used for traversing buffers returned from an S2MM trasnfer
+*/
+s2mm_buf axidma_dequeue_s2mm_buf(sg_list *lst) {
+    sg_entry *e = lst->to_vist;
+    
+    if (!e) {
+        fprintf(stderr, "Cannot dequeue s2mm buffer from empty list\n");
+        s2mm_buf ret = {NULL, 0, END_OF_LIST};
+        return ret;
+    }
+    
+    //If we have reached the end of the list...
+    if (e == &(lst->sentinel)) {
+        lst->to_vist = NULL;
+        s2mm_buf ret = {NULL, 0, END_OF_LIST};
+        return ret;
+    }
+    
+    s2mm_buf ret = {
+        .base = lst->data_buf + e->data_offset,
+        .len = 0,
+        .code = TRANSFER_SUCCESS
+    };
+    
+    //Artificially move e to the previous element, to make the do while loop 
+    //cleaner
+    e = e->prev;
+    
+    do {
+        e = e->next; //This "post-increment" is why we artifically moved e back
+        volatile sg_descriptor *desc = (volatile sg_descriptor *) (lst->sg_buf + e->sg_offset);
+        
+        ret.len += e->len;
+        
+        if (!desc->status.complete || desc->status.decode_err || desc->status.int_err || desc->status.slave_err) {
+            ret.code = TRANSFER_FAILED;
+        }
+    } while (!e->is_EOF);
+    
+    //Update to_visit
+    lst->to_vist = e->next;
+    
+    return ret;
+}
 
 
 #undef physlist
